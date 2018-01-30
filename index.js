@@ -3,6 +3,7 @@
 // Credits go to @tcolgate
 
 const Counter = require('prom-client').Counter;
+const Histogram = require('prom-client').Histogram;
 const optional = require('optional');
 
 const gc = optional('gc-stats');
@@ -34,9 +35,23 @@ module.exports = registry => {
     labelNames,
     registers,
   });
+  const gcTimeHistogram = new Histogram({
+    name: 'nodejs_gc_pause_duration_seconds',
+    help: 'Time spent in GC Pause in seconds.',
+    buckets: [0.001, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.3, 0.5, 1, 2],
+    labelNames,
+    registers,
+  });
   const gcTimeCount = new Counter({
     name: 'nodejs_gc_pause_seconds_total',
     help: 'Time spent in GC Pause in seconds.',
+    labelNames,
+    registers,
+  });
+  const gcReclaimedHistogram = new Histogram({
+    name: 'nodejs_gc_reclaimed_bytes',
+    help: 'Number of bytes reclaimed by GC.',
+    buckets: [1, 100, 1024, 5 * 1024, 10 * 1024, 100 * 1024, 1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024, 500 * 1024 * 1024, 1024 * 1024 * 1024],
     labelNames,
     registers,
   });
@@ -57,10 +72,12 @@ module.exports = registry => {
         const gcType = gcTypes[stats.gctype];
 
         gcCount.labels(gcType).inc();
+        gcTimeHistogram.labels(gcType).observe(stats.pause / 1e9);
         gcTimeCount.labels(gcType).inc(stats.pause / 1e9);
 
         if (stats.diff.usedHeapSize < 0) {
           gcReclaimedCount.labels(gcType).inc(stats.diff.usedHeapSize * -1);
+          gcReclaimedHistogram.labels(gcType).observe(stats.diff.usedHeapSize * -1);
         }
       });
     }
